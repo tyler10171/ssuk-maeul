@@ -77,53 +77,87 @@ export async function completeOnboarding(
     return { error: '입력값을 확인해주세요', fieldErrors }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: '로그인이 만료되었어요. 다시 로그인해주세요.' }
+  let shouldRedirect = false
+
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError || !user) {
+      console.error('[onboarding] auth error', authError)
+      return { error: '로그인이 만료되었어요. 다시 로그인해주세요.' }
+    }
+
+    const { data: existing, error: existingError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (existingError) {
+      console.error('[onboarding] existing check error', existingError)
+      return {
+        error: `프로필 조회 실패: ${existingError.message} (code: ${existingError.code ?? 'n/a'})`,
+      }
+    }
+
+    if (existing) {
+      shouldRedirect = true
+    } else {
+      const userPayload = {
+        id: user.id,
+        email: user.email!,
+        sido,
+        sigungu,
+        current_stage,
+        income_percentile,
+        household_size,
+        monthly_income,
+        housing_status: housing_status_raw || null,
+        qualifications,
+      }
+
+      const { error: userError } = await supabase.from('users').insert(userPayload)
+
+      if (userError) {
+        console.error('[onboarding] users insert error', userError, 'payload:', userPayload)
+        return {
+          error: `프로필 저장에 실패했어요: ${userError.message} (code: ${userError.code ?? 'n/a'})`,
+        }
+      }
+
+      const childPayload = {
+        user_id: user.id,
+        nickname: nickname || null,
+        birth_date: current_stage === 'pregnancy' ? null : birth_date,
+        due_date: current_stage === 'pregnancy' ? due_date : null,
+      }
+
+      const { error: childError } = await supabase.from('children').insert(childPayload)
+
+      if (childError) {
+        console.error('[onboarding] children insert error', childError, 'payload:', childPayload)
+        await supabase.from('users').delete().eq('id', user.id)
+        return {
+          error: `자녀 정보 저장에 실패했어요: ${childError.message} (code: ${childError.code ?? 'n/a'})`,
+        }
+      }
+
+      shouldRedirect = true
+    }
+  } catch (e) {
+    if (e && typeof e === 'object' && 'digest' in e) throw e
+    console.error('[onboarding] unexpected error', e)
+    const message = e instanceof Error ? e.message : String(e)
+    return { error: `예상치 못한 오류가 발생했어요: ${message}` }
   }
 
-  const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (existing) {
+  if (shouldRedirect) {
+    revalidatePath('/', 'layout')
     redirect('/matches')
   }
 
-  const { error: userError } = await supabase.from('users').insert({
-    id: user.id,
-    email: user.email!,
-    sido,
-    sigungu,
-    current_stage,
-    income_percentile,
-    household_size,
-    monthly_income,
-    housing_status: housing_status_raw || null,
-    qualifications,
-  })
-
-  if (userError) {
-    return { error: `프로필 저장에 실패했어요: ${userError.message}` }
-  }
-
-  const { error: childError } = await supabase.from('children').insert({
-    user_id: user.id,
-    nickname: nickname || null,
-    birth_date: current_stage === 'pregnancy' ? null : birth_date,
-    due_date: current_stage === 'pregnancy' ? due_date : null,
-  })
-
-  if (childError) {
-    await supabase.from('users').delete().eq('id', user.id)
-    return { error: `자녀 정보 저장에 실패했어요: ${childError.message}` }
-  }
-
-  revalidatePath('/', 'layout')
-  redirect('/matches')
+  return { error: '알 수 없는 상태입니다. 새로고침 후 다시 시도해주세요.' }
 }
