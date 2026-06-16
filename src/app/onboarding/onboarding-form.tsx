@@ -1,9 +1,8 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { SIDO_LIST, SIGUNGU_MAP, type Sido } from '@/lib/korean-regions'
-import { completeOnboarding, initialOnboardingState } from './actions'
 
 const STAGE_OPTIONS = [
   { value: 'pregnancy', label: '임신 중', hint: '출산예정일을 입력해주세요' },
@@ -32,26 +31,72 @@ const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition disabled:bg-gray-100 disabled:text-gray-400'
 const errorCls = 'mt-1 text-xs text-red-600'
 
+type State = {
+  error: string | null
+  code?: string
+  fieldErrors?: Record<string, string>
+  success?: boolean
+}
+
+const initialState: State = { error: null }
+
 export default function OnboardingForm() {
   const router = useRouter()
-  const [state, formAction, pending] = useActionState(
-    completeOnboarding,
-    initialOnboardingState,
-  )
+  const [pending, startTransition] = useTransition()
+  const [state, setState] = useState<State>(initialState)
   const [sido, setSido] = useState<Sido | ''>('')
   const [stage, setStage] = useState<string>('')
 
-  useEffect(() => {
-    if (state.success) {
-      router.push('/matches')
-      router.refresh()
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const body: Record<string, unknown> = {
+      sido: fd.get('sido'),
+      sigungu: fd.get('sigungu'),
+      current_stage: fd.get('current_stage'),
+      birth_date: fd.get('birth_date'),
+      due_date: fd.get('due_date'),
+      nickname: fd.get('nickname'),
+      housing_status: fd.get('housing_status'),
+      qualifications: fd.getAll('qualifications'),
     }
-  }, [state.success, router])
+    const incomeRaw = fd.get('income_percentile')
+    body.income_percentile = incomeRaw ? Number(incomeRaw) : null
+    const hsRaw = fd.get('household_size')
+    body.household_size = hsRaw ? Number(hsRaw) : null
+    const miRaw = fd.get('monthly_income')
+    body.monthly_income = miRaw ? Number(miRaw) : null
+
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/onboarding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setState({
+            error: data.error ?? '저장 실패',
+            code: data.code,
+            fieldErrors: data.fieldErrors,
+          })
+          return
+        }
+        setState({ error: null, success: true })
+        router.push(data.redirectTo ?? '/matches')
+        router.refresh()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setState({ error: `네트워크 오류: ${msg}` })
+      }
+    })
+  }
 
   const sigunguOptions = sido ? SIGUNGU_MAP[sido] : []
 
   return (
-    <form action={formAction} className="space-y-10">
+    <form onSubmit={handleSubmit} className="space-y-10">
       <section className="space-y-5">
         <h2 className="text-base font-semibold text-gray-900 pb-2 border-b border-gray-100">
           1. 기본 정보
@@ -226,9 +271,6 @@ export default function OnboardingForm() {
                 </option>
               ))}
             </select>
-            {state.fieldErrors?.income_percentile && (
-              <p className={errorCls}>{state.fieldErrors.income_percentile}</p>
-            )}
           </div>
 
           <div>
@@ -248,9 +290,6 @@ export default function OnboardingForm() {
                 </option>
               ))}
             </select>
-            {state.fieldErrors?.household_size && (
-              <p className={errorCls}>{state.fieldErrors.household_size}</p>
-            )}
           </div>
         </div>
 
@@ -270,9 +309,6 @@ export default function OnboardingForm() {
           <p className="mt-1 text-xs text-gray-500">
             가구 합산 월 소득. 소득 기준 정책 매칭에만 사용돼요.
           </p>
-          {state.fieldErrors?.monthly_income && (
-            <p className={errorCls}>{state.fieldErrors.monthly_income}</p>
-          )}
         </div>
 
         <fieldset>
@@ -322,7 +358,10 @@ export default function OnboardingForm() {
       </section>
 
       {state.error && (
-        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.error}</p>
+        <div className="text-sm text-red-700 bg-red-50 border border-red-100 px-4 py-3 rounded-lg space-y-1">
+          <p className="font-medium">{state.error}</p>
+          {state.code && <p className="text-xs">code: {state.code}</p>}
+        </div>
       )}
 
       <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-white border-t border-gray-100 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0">

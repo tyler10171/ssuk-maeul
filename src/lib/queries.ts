@@ -7,21 +7,39 @@ export type CurrentSession = {
 }
 
 export async function getCurrentSession(): Promise<CurrentSession> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
-  if (!user) return { user: null, profile: null }
+    if (authError) {
+      console.error('[getCurrentSession] auth error', authError)
+      return { user: null, profile: null }
+    }
+    if (!user) return { user: null, profile: null }
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle<Profile>()
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle<Profile>()
 
-  return {
-    user: { id: user.id, email: user.email ?? '' },
-    profile: profile ?? null,
+    if (profileError) {
+      console.error('[getCurrentSession] profile error', profileError)
+      return {
+        user: { id: user.id, email: user.email ?? '' },
+        profile: null,
+      }
+    }
+
+    return {
+      user: { id: user.id, email: user.email ?? '' },
+      profile: profile ?? null,
+    }
+  } catch (e) {
+    console.error('[getCurrentSession] unexpected', e)
+    return { user: null, profile: null }
   }
 }
