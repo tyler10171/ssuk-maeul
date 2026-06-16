@@ -1,12 +1,12 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import SiteHeader from '@/components/site-header'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentSession } from '@/lib/queries'
 
 export default async function Home() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user, profile } = await getCurrentSession()
+
+  if (user && !profile) redirect('/onboarding')
 
   return (
     <div className="flex-1 flex flex-col">

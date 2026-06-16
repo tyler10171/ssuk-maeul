@@ -1,25 +1,33 @@
+import { redirect } from 'next/navigation'
 import SiteHeader from '@/components/site-header'
-import ComingSoon from '@/components/coming-soon'
+import { getCurrentSession } from '@/lib/queries'
+import OnboardingForm from './onboarding-form'
 
 export const metadata = {
   title: '프로필 입력 — 쑥 마을',
 }
 
-export default function OnboardingPage() {
+export default async function OnboardingPage() {
+  const { user, profile } = await getCurrentSession()
+
+  if (!user) redirect('/login?next=/onboarding')
+  if (profile) redirect('/matches')
+
   return (
     <>
       <SiteHeader />
       <main className="flex-1">
-        <ComingSoon
-          title="프로필 입력, 준비 중이에요"
-          description="여기서 거주지·시기·자녀 정보·소득·주택 등을 입력하면 받을 수 있는 지원을 자동으로 찾아드려요. 곧 만나요!"
-          bullets={[
-            '거주지(시도·시군구) 선택',
-            '현재 시기(임신·출산·육아) 선택',
-            '자녀 정보 (생년월일 또는 출산예정일)',
-            '소득·주택·특수자격 (선택, 매칭 정확도 향상)',
-          ]}
-        />
+        <div className="max-w-2xl mx-auto px-6 py-10 sm:py-14">
+          <div className="mb-8 space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">프로필 입력</h1>
+            <p className="text-gray-600">
+              받을 수 있는 지원을 정확히 찾으려면 잠깐만 알려주세요.
+              <br className="hidden sm:inline" />
+              민감 정보는 매칭에만 쓰이고 안전하게 저장돼요.
+            </p>
+          </div>
+          <OnboardingForm />
+        </div>
       </main>
     </>
   )
