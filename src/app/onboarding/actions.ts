@@ -1,6 +1,5 @@
 'use server'
 
-import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { SIDO_LIST, SIGUNGU_MAP, type Sido } from '@/lib/korean-regions'
@@ -8,6 +7,7 @@ import { SIDO_LIST, SIGUNGU_MAP, type Sido } from '@/lib/korean-regions'
 export type OnboardingState = {
   error: string | null
   fieldErrors?: Record<string, string>
+  success?: boolean
 }
 
 export const initialOnboardingState: OnboardingState = { error: null }
@@ -77,8 +77,6 @@ export async function completeOnboarding(
     return { error: '입력값을 확인해주세요', fieldErrors }
   }
 
-  let shouldRedirect = false
-
   try {
     const supabase = await createClient()
     const {
@@ -103,9 +101,7 @@ export async function completeOnboarding(
       }
     }
 
-    if (existing) {
-      shouldRedirect = true
-    } else {
+    if (!existing) {
       const userPayload = {
         id: user.id,
         email: user.email!,
@@ -144,20 +140,13 @@ export async function completeOnboarding(
           error: `자녀 정보 저장에 실패했어요: ${childError.message} (code: ${childError.code ?? 'n/a'})`,
         }
       }
-
-      shouldRedirect = true
     }
+
+    revalidatePath('/', 'layout')
+    return { error: null, success: true }
   } catch (e) {
-    if (e && typeof e === 'object' && 'digest' in e) throw e
     console.error('[onboarding] unexpected error', e)
     const message = e instanceof Error ? e.message : String(e)
     return { error: `예상치 못한 오류가 발생했어요: ${message}` }
   }
-
-  if (shouldRedirect) {
-    revalidatePath('/', 'layout')
-    redirect('/matches')
-  }
-
-  return { error: '알 수 없는 상태입니다. 새로고침 후 다시 시도해주세요.' }
 }

@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { SIDO_LIST, SIGUNGU_MAP, type Sido } from '@/lib/korean-regions'
 import { completeOnboarding, initialOnboardingState } from './actions'
 
@@ -32,12 +33,20 @@ const inputCls =
 const errorCls = 'mt-1 text-xs text-red-600'
 
 export default function OnboardingForm() {
+  const router = useRouter()
   const [state, formAction, pending] = useActionState(
     completeOnboarding,
     initialOnboardingState,
   )
   const [sido, setSido] = useState<Sido | ''>('')
   const [stage, setStage] = useState<string>('')
+
+  useEffect(() => {
+    if (state.success) {
+      router.push('/matches')
+      router.refresh()
+    }
+  }, [state.success, router])
 
   const sigunguOptions = sido ? SIGUNGU_MAP[sido] : []
 
@@ -319,10 +328,10 @@ export default function OnboardingForm() {
       <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-white border-t border-gray-100 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0">
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || state.success}
           className="w-full py-3 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:bg-emerald-300 transition"
         >
-          {pending ? '저장 중...' : '저장하고 추천 보기'}
+          {pending ? '저장 중...' : state.success ? '이동 중...' : '저장하고 추천 보기'}
         </button>
       </div>
     </form>
