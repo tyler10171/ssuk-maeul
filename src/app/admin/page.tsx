@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
+import SyncNowButton from './sync-now-button'
 
 export default async function AdminHomePage() {
   const supabase = createAdminClient()
@@ -7,6 +8,7 @@ export default async function AdminHomePage() {
   const [
     { count: totalPolicies },
     { count: activePolicies },
+    { count: pendingReview },
     { count: pregnancyPolicies },
     { count: birthPolicies },
     { count: childcarePolicies },
@@ -14,6 +16,11 @@ export default async function AdminHomePage() {
   ] = await Promise.all([
     supabase.from('policies').select('*', { count: 'exact', head: true }),
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    supabase
+      .from('policies')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', false)
+      .eq('source', 'api'),
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('category', 'pregnancy'),
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('category', 'birth'),
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('category', 'childcare'),
@@ -23,6 +30,7 @@ export default async function AdminHomePage() {
   const stats = [
     { label: '전체 정책', value: totalPolicies ?? 0, color: 'bg-blue-50 text-blue-800' },
     { label: '활성 정책', value: activePolicies ?? 0, color: 'bg-emerald-50 text-emerald-800' },
+    { label: 'API 검토 대기', value: pendingReview ?? 0, color: 'bg-amber-50 text-amber-800' },
     { label: '임신', value: pregnancyPolicies ?? 0, color: 'bg-pink-50 text-pink-800' },
     { label: '출산', value: birthPolicies ?? 0, color: 'bg-orange-50 text-orange-800' },
     { label: '육아', value: childcarePolicies ?? 0, color: 'bg-amber-50 text-amber-800' },
@@ -30,13 +38,13 @@ export default async function AdminHomePage() {
   ]
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10">
-      <header className="mb-8">
+    <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
+      <header>
         <h1 className="text-2xl font-bold text-gray-900">관리자 대시보드</h1>
         <p className="text-sm text-gray-600 mt-1">정책 등록·수정과 통계를 관리합니다.</p>
       </header>
 
-      <section className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-10">
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {stats.map((s) => (
           <div key={s.label} className={`rounded-xl p-5 ${s.color}`}>
             <p className="text-xs font-medium opacity-80">{s.label}</p>
@@ -44,6 +52,8 @@ export default async function AdminHomePage() {
           </div>
         ))}
       </section>
+
+      <SyncNowButton />
 
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link
